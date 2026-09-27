@@ -20,11 +20,15 @@ def run_detection(line_id: int, stop_name: str | None = None, db: Session = Depe
     if not line: raise HTTPException(404, "线路不存在")
     trips = db.scalars(select(Trip).where(Trip.line_id == line_id)).all()
     trip_ids = [t.id for t in trips]
-    trip_no_map = {t.id: t.trip_no for t in trips}
+    trip_map = {t.id: t for t in trips}
     arrivals = db.scalars(select(Arrival).where(Arrival.trip_id.in_(trip_ids))).all()
-    payload = [{"stop_name": a.stop_name, "trip_no": trip_no_map[a.trip_id], "actual_arrive": a.actual_arrive}
+    terminal_seq = max((a.stop_seq for a in arrivals), default=None)
+    terminal_stop = next((a.stop_name for a in arrivals if a.stop_seq == terminal_seq), None)
+    payload = [{"stop_name": a.stop_name, "trip_no": trip_map[a.trip_id].trip_no,
+                "vehicle_no": trip_map[a.trip_id].vehicle_no, "actual_arrive": a.actual_arrive}
                for a in arrivals if stop_name is None or a.stop_name == stop_name]
-    events = detect_bunching(payload, line.planned_headway_min, line.bunch_threshold, line.large_threshold)
+    events = detect_bunching(payload, line.planned_headway_min, line.bunch_threshold, line.large_threshold,
+                             line.min_turnaround_min, terminal_stop)
     data = events_to_dicts(events)
     report = BunchReport(line_id=line_id, stop_name=stop_name or "*", created_at=datetime.utcnow(),
                          summary_json=json.dumps(data, ensure_ascii=False))

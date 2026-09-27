@@ -7,9 +7,13 @@ def seed_if_empty(db: Session) -> None:
     if (db.scalar(select(func.count()).select_from(Line)) or 0) > 0:
         return
     base = datetime(2026, 9, 17, 7, 0, 0)
-    line = Line(code="B12", name="城东环线", planned_headway_min=8.0, bunch_threshold=3.0, large_threshold=15.0)
+    line = Line(code="B12", name="城东环线", planned_headway_min=8.0, bunch_threshold=3.0, large_threshold=15.0,
+                min_turnaround_min=6.0)
     db.add(line); db.flush()
-    specs = [("T01", "粤A1001", 0), ("T02", "粤A1002", 2), ("T03", "粤A1003", 18), ("T04", "粤A1004", 26)]
+    # T05 与 T01 同车（粤A1001）：T01 终点站 7:18 到达，T05 起点站 7:20 又发出，
+    # 折返仅 2 分钟 < 最小折返 6 分钟，应判折返不足而非串车
+    specs = [("T01", "粤A1001", 0), ("T02", "粤A1002", 2), ("T03", "粤A1003", 18), ("T04", "粤A1004", 26),
+             ("T05", "粤A1001", 20)]
     stops = ["起点站", "市民中心", "火车站", "终点站"]
     for trip_no, vehicle, offset in specs:
         trip = Trip(line_id=line.id, trip_no=trip_no, planned_depart=base + timedelta(minutes=offset), vehicle_no=vehicle)

@@ -11,6 +11,8 @@ class Line(Base):
     planned_headway_min: Mapped[float] = mapped_column(Float, default=8.0)
     bunch_threshold: Mapped[float] = mapped_column(Float, default=3.0)
     large_threshold: Mapped[float] = mapped_column(Float, default=15.0)
+    # 终点站最小折返分钟；NULL 表示未配置（同车接续仍按普通间隔阈值判定）
+    min_turnaround_min: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
     trips: Mapped[list["Trip"]] = relationship(back_populates="line")
 
 class Trip(Base):
