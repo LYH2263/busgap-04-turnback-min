@@ -20,7 +20,26 @@ def classify_gap(gap_min: float, planned_headway_min: float, bunch_threshold: fl
         return ("large_gap", f"间隔 {gap_min:.1f} 分钟超过大间隔阈值 {large_threshold}，建议前车减速或加发。")
     return ("normal", f"间隔接近计划 {planned_headway_min:.1f} 分钟，保持即可。")
 
-def detect_bunching(arrivals: list[dict], planned_headway_min: float, bunch_threshold: float, large_threshold: float) -> list[GapEvent]:
+def classify_turnaround(gap_min: float, min_turnaround_min: float, vehicle_no: str) -> tuple[str, str]:
+    return ("short_turnaround",
+            f"同车 {vehicle_no} 终点折返仅 {gap_min:.1f} 分钟，低于最小折返 {min_turnaround_min} 分钟，"
+            f"建议延长折返时间或调整接续班次。")
+
+def is_short_turnaround(prev: dict, cur: dict, terminal_seq: int | None, min_turnaround_min: float | None, gap_min: float) -> bool:
+    """同一车辆在终点站接续、且间隔小于最小折返分钟时成立。未配置折返或数据不全时不触发。"""
+    if min_turnaround_min is None or terminal_seq is None:
+        return False
+    if prev.get("stop_seq") != terminal_seq:
+        return False
+    vehicle = prev.get("vehicle_no") or ""
+    if not vehicle or vehicle != (cur.get("vehicle_no") or ""):
+        return False
+    return gap_min < min_turnaround_min
+
+def detect_bunching(arrivals: list[dict], planned_headway_min: float, bunch_threshold: float, large_threshold: float,
+                    min_turnaround_min: float | None = None) -> list[GapEvent]:
+    seqs = [a["stop_seq"] for a in arrivals if a.get("stop_seq") is not None]
+    terminal_seq = max(seqs) if seqs else None
     by_stop: dict[str, list[dict]] = {}
     for a in arrivals:
         by_stop.setdefault(a["stop_name"], []).append(a)
@@ -30,7 +49,10 @@ def detect_bunching(arrivals: list[dict], planned_headway_min: float, bunch_thre
         for i in range(1, len(items)):
             prev, cur = items[i - 1], items[i]
             gap_min = (cur["actual_arrive"] - prev["actual_arrive"]).total_seconds() / 60.0
-            status, suggestion = classify_gap(gap_min, planned_headway_min, bunch_threshold, large_threshold)
+            if is_short_turnaround(prev, cur, terminal_seq, min_turnaround_min, gap_min):
+                status, suggestion = classify_turnaround(gap_min, min_turnaround_min, prev["vehicle_no"])
+            else:
+                status, suggestion = classify_gap(gap_min, planned_headway_min, bunch_threshold, large_threshold)
             events.append(GapEvent(stop, prev["trip_no"], cur["trip_no"], round(gap_min, 2), planned_headway_min, status, suggestion))
     return events
 
